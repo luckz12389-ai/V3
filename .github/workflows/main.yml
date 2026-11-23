@@ -90,7 +90,7 @@ jobs:
           "RDP_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # ============================================================
-      # 4. TAILSCALE
+      # 4. TAILSCALE (CORRIGIDO)
       # ============================================================
       - name: Install Tailscale
         run: |
@@ -102,22 +102,33 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
+          # Adicionado --unattended para rodar em ambiente headless (sem interface gráfica)
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
               --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-              --hostname=gh-gaming-$env:GITHUB_RUN_ID
+              --hostname=gh-gaming-$env:GITHUB_RUN_ID `
+              --unattended
 
           $tsIP = $null
           $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
+          # Aumentado para 15 tentativas (75 segundos) para dar tempo de conectar
+          while (-not $tsIP -and $retries -lt 15) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
+              if (-not $tsIP) {
+                  Write-Host "Aguardando IP do Tailscale... (tentativa $($retries + 1)/15)"
+                  Start-Sleep -Seconds 5
+                  $retries++
+              }
           }
-          if (-not $tsIP) { Write-Error "Tailscale IP not assigned."; exit 1 }
+          
+          if (-not $tsIP) {
+              Write-Error "Tailscale não conseguiu obter um IP. Verifique se a TAILSCALE_AUTH_KEY é válida e não expirou."
+              exit 1
+          }
           "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Tailscale conectado com sucesso! IP: $tsIP"
 
       # ============================================================
-      # 5. SUPORTE A JOYSTICK / GAMEPAD (CORRIGIDO)
+      # 5. SUPORTE A JOYSTICK / GAMEPAD
       # ============================================================
       - name: Install ViGEmBus (Virtual Gamepad Driver)
         if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
@@ -132,7 +143,6 @@ jobs:
       - name: Install DS4Windows via Chocolatey
         if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
         run: |
-          # O Chocolatey resolve o link quebrado baixando o app Windows diretamente
           choco install ds4windows -y --no-progress
           Write-Host "DS4Windows instalado."
 
