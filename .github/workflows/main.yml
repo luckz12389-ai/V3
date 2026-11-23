@@ -48,28 +48,19 @@ jobs:
       # ============================================================
       - name: Optimize System for Gaming / RDP
         run: |
-          # Desativa hibernação e suspensão (mantém a máquina acordada)
           powercfg -h off
           powercfg /change standby-timeout-ac 0
           powercfg /change monitor-timeout-ac 0
           powercfg /change disk-timeout-ac 0
-
-          # Ativa plano de alto desempenho
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-
-          # Desativa efeitos visuais pesados do Windows (melhora FPS em RDP)
+          
           Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' `
                            -Name 'VisualFXSetting' -Value 2 -Force
-
-          # Ajusta prioridade de processos em primeiro plano (jogos)
           Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' `
                            -Name 'Win32PrioritySeparation' -Value 38 -Force
-
-          # Desativa telemetria do Windows
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' `
                            -Name 'AllowTelemetry' -Value 0 -Force -ErrorAction SilentlyContinue
-
-          Write-Host "Sistema otimizado para jogos."
+          Write-Host "Sistema otimizado."
 
       # ============================================================
       # 3. CRIAÇÃO DE USUÁRIO RDP
@@ -82,8 +73,7 @@ jobs:
               Upper   = [char[]](65..90)
               Lower   = [char[]](97..122)
               Number  = [char[]](48..57)
-              Special = ([char[]](33..47) + [char[]](58..64) +
-                         [char[]](91..96) + [char[]](123..126))
+              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
           }
           $rawPassword  = @()
           $rawPassword += $charSet.Upper   | Get-Random -Count 4
@@ -100,7 +90,7 @@ jobs:
           "RDP_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # ============================================================
-      # 4. TAILSCALE (acesso remoto seguro)
+      # 4. TAILSCALE
       # ============================================================
       - name: Install Tailscale
         run: |
@@ -127,30 +117,24 @@ jobs:
           "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # ============================================================
-      # 5. SUPORTE A JOYSTICK / GAMEPAD
+      # 5. SUPORTE A JOYSTICK / GAMEPAD (CORRIGIDO)
       # ============================================================
       - name: Install ViGEmBus (Virtual Gamepad Driver)
         if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
         run: |
-          # Driver necessário para emular controles Xbox 360 / DualShock 4
-          # Usado por DS4Windows, x360ce, reWASD, etc.
           $url = "https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe"
           $out = "$env:TEMP\ViGEmBus.exe"
           Invoke-WebRequest -Uri $url -OutFile $out
           Start-Process -FilePath $out -ArgumentList "/quiet /norestart" -Wait
           Remove-Item $out -Force
-          Write-Host "ViGEmBus instalado (suporte a gamepad virtual)."
+          Write-Host "ViGEmBus instalado."
 
-      - name: Install DS4Windows (DualShock 4 / DualSense)
+      - name: Install DS4Windows via Chocolatey
         if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
         run: |
-          $url = "https://github.com/Ryochan7/DS4Windows/releases/download/v3.3.3/DS4Windows_3.3.3_x64.zip"
-          $zip = "$env:TEMP\DS4Windows.zip"
-          $dir = "C:\Tools\DS4Windows"
-          Invoke-WebRequest -Uri $url -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $dir -Force
-          Remove-Item $zip -Force
-          Write-Host "DS4Windows instalado em $dir"
+          # O Chocolatey resolve o link quebrado baixando o app Windows diretamente
+          choco install ds4windows -y --no-progress
+          Write-Host "DS4Windows instalado."
 
       # ============================================================
       # 6. FERRAMENTAS DE JOGO
@@ -197,12 +181,11 @@ jobs:
           Remove-Item $out -Force
 
       # ============================================================
-      # 8. FERRAMENTAS DE DEV (úteis também para jogos/emuladores)
+      # 8. FERRAMENTAS DE DEV
       # ============================================================
       - name: Install Dev Tools (Git, Node, Python, VSCode)
         if: ${{ github.event.inputs.install_dev_tools == 'true' }}
         run: |
-          # Chocolatey já vem instalado no runner windows-latest
           choco install -y git nodejs-lts python vscode 7zip --no-progress
           git --version
           node --version
@@ -215,7 +198,7 @@ jobs:
           choco install -y retroarch --no-progress
 
       # ============================================================
-      # 9. VERIFICAÇÃO DE ACESSIBILIDADE
+      # 9. VERIFICAÇÃO E RESUMO
       # ============================================================
       - name: Verify RDP Accessibility
         run: |
@@ -227,9 +210,6 @@ jobs:
           }
           Write-Host "Conectividade TCP OK!"
 
-      # ============================================================
-      # 10. RESUMO E MANUTENÇÃO
-      # ============================================================
       - name: Show Access Info
         run: |
           Write-Host ""
@@ -241,10 +221,9 @@ jobs:
           Write-Host " Senha    : $env:RDP_PASSWORD"
           Write-Host "==========================================="
           Write-Host " Dicas:"
-          Write-Host "  - Use mstsc.exe (Windows) ou Remmina (Linux)"
-          Write-Host "  - Para joystick: ative 'Redirecionar dispositivos USB' no cliente RDP"
-          Write-Host "    ou use DS4Windows em C:\Tools\DS4Windows"
-          Write-Host "  - Para áudio/gamepad completo, use Parsec ou Sunshine"
+          Write-Host "  - Use mstsc.exe para conectar."
+          Write-Host "  - O DS4Windows foi instalado via Chocolatey."
+          Write-Host "  - Ative o redirecionamento USB no RDP para usar o controle."
           Write-Host "==========================================="
 
       - name: Maintain Connection
