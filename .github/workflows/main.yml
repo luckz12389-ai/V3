@@ -1,22 +1,22 @@
-name: RDP-Gaming
+name: RDP-Gaming-Completo
 
 on:
   workflow_dispatch:
     inputs:
       install_steam:
-        description: 'Instalar Steam'
+        description: 'Instalar Steam e Epic Games'
         required: false
         default: 'true'
       install_gaming_tools:
-        description: 'Instalar ferramentas de jogo (ViGEmBus, DS4Windows)'
+        description: 'Instalar Joystick (ViGEmBus, DS4Windows)'
+        required: false
+        default: 'true'
+      install_etv:
+        description: 'Instalar ETV / Streaming (Parsec, OBS Studio)'
         required: false
         default: 'true'
       install_browsers:
-        description: 'Instalar navegadores (Chrome, Firefox)'
-        required: false
-        default: 'true'
-      install_dev_tools:
-        description: 'Instalar ferramentas de dev (VSCode, Git, Node, Python)'
+        description: 'Instalar Navegadores (Chrome, Firefox)'
         required: false
         default: 'true'
 
@@ -44,7 +44,7 @@ jobs:
           Restart-Service -Name TermService -Force
 
       # ============================================================
-      # 2. OTIMIZAÇÕES DE SISTEMA PARA JOGOS / RDP
+      # 2. OTIMIZAÇÕES DE SISTEMA PARA JOGOS
       # ============================================================
       - name: Optimize System for Gaming / RDP
         run: |
@@ -60,7 +60,7 @@ jobs:
                            -Name 'Win32PrioritySeparation' -Value 38 -Force
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' `
                            -Name 'AllowTelemetry' -Value 0 -Force -ErrorAction SilentlyContinue
-          Write-Host "Sistema otimizado."
+          Write-Host "Sistema otimizado para jogos."
 
       # ============================================================
       # 3. CRIAÇÃO DE USUÁRIO RDP
@@ -90,7 +90,7 @@ jobs:
           "RDP_PASSWORD=$password" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # ============================================================
-      # 4. TAILSCALE (CORRIGIDO)
+      # 4. TAILSCALE (CHAVE DIRETA NO CÓDIGO)
       # ============================================================
       - name: Install Tailscale
         run: |
@@ -102,15 +102,14 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Adicionado --unattended para rodar em ambiente headless (sem interface gráfica)
+          # Sua chave está aqui:
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-              --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+              --authkey="tskey-auth-kMd5t97DHf11CNTRL-Z5UmV1WcwfXBqerRAadTfXADDieYVq9Q" `
               --hostname=gh-gaming-$env:GITHUB_RUN_ID `
               --unattended
 
           $tsIP = $null
           $retries = 0
-          # Aumentado para 15 tentativas (75 segundos) para dar tempo de conectar
           while (-not $tsIP -and $retries -lt 15) {
               $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
               if (-not $tsIP) {
@@ -119,16 +118,12 @@ jobs:
                   $retries++
               }
           }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale não conseguiu obter um IP. Verifique se a TAILSCALE_AUTH_KEY é válida e não expirou."
-              exit 1
-          }
+          if (-not $tsIP) { Write-Error "Tailscale falhou. Verifique a chave."; exit 1 }
           "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Tailscale conectado com sucesso! IP: $tsIP"
+          Write-Host "Tailscale conectado! IP: $tsIP"
 
       # ============================================================
-      # 5. SUPORTE A JOYSTICK / GAMEPAD
+      # 5. JOYSTICK / CONTROLE
       # ============================================================
       - name: Install ViGEmBus (Virtual Gamepad Driver)
         if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
@@ -147,7 +142,26 @@ jobs:
           Write-Host "DS4Windows instalado."
 
       # ============================================================
-      # 6. FERRAMENTAS DE JOGO
+      # 6. ETV / STREAMING
+      # ============================================================
+      - name: Install Parsec (Streaming)
+        if: ${{ github.event.inputs.install_etv == 'true' }}
+        run: |
+          $url = "https://builds.parsecgaming.com/package/parsec-windows.exe"
+          $out = "$env:TEMP\parsec.exe"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          Start-Process -FilePath $out -ArgumentList "/S" -Wait
+          Remove-Item $out -Force
+          Write-Host "Parsec instalado."
+
+      - name: Install OBS Studio
+        if: ${{ github.event.inputs.install_etv == 'true' }}
+        run: |
+          choco install obs-studio -y --no-progress
+          Write-Host "OBS Studio instalado."
+
+      # ============================================================
+      # 7. JOGOS E NAVEGADORES
       # ============================================================
       - name: Install Steam
         if: ${{ github.event.inputs.install_steam == 'true' }}
@@ -159,7 +173,7 @@ jobs:
           Remove-Item $out -Force
           Write-Host "Steam instalada."
 
-      - name: Install Epic Games Launcher (opcional)
+      - name: Install Epic Games Launcher
         if: ${{ github.event.inputs.install_steam == 'true' }}
         continue-on-error: true
         run: |
@@ -169,53 +183,20 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "`"$out`"", "/quiet", "/norestart" -Wait
           Remove-Item $out -Force
 
-      # ============================================================
-      # 7. NAVEGADORES
-      # ============================================================
-      - name: Install Google Chrome
+      - name: Install Browsers
         if: ${{ github.event.inputs.install_browsers == 'true' }}
         run: |
-          $url = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
-          $out = "$env:TEMP\chrome.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process -FilePath $out -ArgumentList "/silent /install" -Wait
-          Remove-Item $out -Force
-
-      - name: Install Firefox
-        if: ${{ github.event.inputs.install_browsers == 'true' }}
-        run: |
-          $url = "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=pt-BR"
-          $out = "$env:TEMP\firefox.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process -FilePath $out -ArgumentList "/S" -Wait
-          Remove-Item $out -Force
+          choco install googlechrome firefox -y --no-progress
 
       # ============================================================
-      # 8. FERRAMENTAS DE DEV
-      # ============================================================
-      - name: Install Dev Tools (Git, Node, Python, VSCode)
-        if: ${{ github.event.inputs.install_dev_tools == 'true' }}
-        run: |
-          choco install -y git nodejs-lts python vscode 7zip --no-progress
-          git --version
-          node --version
-          python --version
-
-      - name: Install Emuladores (RetroArch - opcional)
-        if: ${{ github.event.inputs.install_gaming_tools == 'true' }}
-        continue-on-error: true
-        run: |
-          choco install -y retroarch --no-progress
-
-      # ============================================================
-      # 9. VERIFICAÇÃO E RESUMO
+      # 8. RESUMO E MANUTENÇÃO
       # ============================================================
       - name: Verify RDP Accessibility
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
           if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
+              Write-Error "Falha na conexão TCP."
               exit 1
           }
           Write-Host "Conectividade TCP OK!"
@@ -230,10 +211,10 @@ jobs:
           Write-Host " Usuário  : RDP"
           Write-Host " Senha    : $env:RDP_PASSWORD"
           Write-Host "==========================================="
-          Write-Host " Dicas:"
-          Write-Host "  - Use mstsc.exe para conectar."
-          Write-Host "  - O DS4Windows foi instalado via Chocolatey."
-          Write-Host "  - Ative o redirecionamento USB no RDP para usar o controle."
+          Write-Host " Ferramentas:"
+          Write-Host "  - Joystick: ViGEmBus + DS4Windows"
+          Write-Host "  - ETV: Parsec + OBS Studio"
+          Write-Host "  - Jogos: Steam + Epic Games"
           Write-Host "==========================================="
 
       - name: Maintain Connection
